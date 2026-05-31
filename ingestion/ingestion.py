@@ -16,6 +16,9 @@ from prometheus_client import Counter, start_http_server
 
 from drift_detector import DriftDetector
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # ---------------------------------------------------------------------------
 # Logging — structured, timestamped output so every event is traceable
 # ---------------------------------------------------------------------------
