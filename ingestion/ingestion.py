@@ -89,14 +89,20 @@ def _compare_schemas(
 def _persist_batch(records: list[dict], schema: list[str]) -> int:
     """Append records to the local CSV, creating it with a header if needed."""
     os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
-    file_exists = os.path.isfile(DATA_FILE)
+    
+    # Always check if header exists by reading first line, not just file existence
+    has_header = False
+    if os.path.isfile(DATA_FILE):
+        with open(DATA_FILE, "r") as fh:
+            first_line = fh.readline().strip()
+            # Header exists if first line matches schema columns
+            has_header = first_line == ",".join(schema)
 
     with open(DATA_FILE, "a", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=schema, extrasaction="ignore")
-        if not file_exists:
-            writer.writeheader()   # write column names once on creation
+        if not has_header:
+            writer.writeheader()
         for row in records:
-            # Fill missing keys with empty string so DictWriter never chokes
             writer.writerow({col: row.get(col, "") for col in schema})
 
     return len(records)
@@ -113,7 +119,7 @@ def _trigger_retraining(reason: str) -> None:
 
     # Replace the os.system call with an HTTP POST to a training service or
     # a Kubernetes Job submission when the pipeline is containerised.
-    ret = os.system("python training/train.py")
+    ret = os.system("python model/train.py")
     if ret != 0:
         log.error("Retraining script exited with code %d", ret)
 

@@ -3,3 +3,5 @@ pandas
 numpy
 prometheus_client
 python-dotenv
+scikit-learn
+joblib
