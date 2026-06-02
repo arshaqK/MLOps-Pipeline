@@ -57,7 +57,7 @@ RETRAIN_COOLDOWN_SEC  = int(os.getenv("RETRAIN_COOLDOWN",      "120"))  # min ga
 VAL_SPLIT             = float(os.getenv("VAL_SPLIT",           "0.2"))
 LABEL_COL             = os.getenv("LABEL_COL",         "label")
 SLACK_WEBHOOK_URL     = os.getenv("SLACK_WEBHOOK_URL", "")
-METRICS_PORT          = int(os.getenv("RETRAIN_METRICS_PORT",  "8003"))
+RETRAIN_METRICS_PORT          = int(os.getenv("RETRAIN_RETRAIN_METRICS_PORT",  "8003"))
 
 # ---------------------------------------------------------------------------
 # Prometheus metrics
@@ -227,10 +227,10 @@ def run_watch_loop() -> None:
     In standalone mode, only accuracy degradation is checked.
     """
     try:
-        start_http_server(METRICS_PORT)
-        log.info("Retrain metrics server on port %d", METRICS_PORT)
+        start_http_server(RETRAIN_METRICS_PORT)
+        log.info("Retrain metrics server on port %d", RETRAIN_METRICS_PORT)
     except OSError:
-        log.warning("Port %d already in use.", METRICS_PORT)
+        log.warning("Port %d already in use.", RETRAIN_METRICS_PORT)
 
     log.info("Retrain watch loop started (eval every %ds)", EVAL_INTERVAL_SEC)
     last_retrain_time = 0.0

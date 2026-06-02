@@ -49,7 +49,7 @@ MODEL_DIR          = os.getenv("MODEL_DIR", "model/artifacts")
 ACCURACY_THRESHOLD = float(os.getenv("ACCURACY_THRESHOLD", "0.80"))
 MAX_ITERATIONS     = int(os.getenv("MAX_ITERATIONS", "10"))
 VAL_SPLIT          = float(os.getenv("VAL_SPLIT", "0.2"))
-METRICS_PORT       = int(os.getenv("METRICS_PORT", "8002"))  # separate port from ingestion
+TRAIN_METRICS_PORT = int(os.getenv("TRAIN_METRICS_PORT", "8002"))  # separate port from ingestion
 LABEL_COL          = os.getenv("LABEL_COL", "label")
 
 # ---------------------------------------------------------------------------
@@ -121,10 +121,10 @@ def train(start_metrics_server: bool = False) -> tuple[str, float, int]:
     if start_metrics_server:
         # Only start if called as a standalone script; retrain_trigger manages this
         try:
-            start_http_server(METRICS_PORT)
-            log.info("Prometheus metrics server started on port %d", METRICS_PORT)
+            start_http_server(TRAIN_METRICS_PORT)
+            log.info("Prometheus metrics server started on port %d", TRAIN_METRICS_PORT)
         except OSError:
-            log.warning("Metrics port %d already in use — skipping.", METRICS_PORT)
+            log.warning("Metrics port %d already in use — skipping.", TRAIN_METRICS_PORT)
 
     X, y = _load_data()
     RETRAIN_COUNT.inc()
