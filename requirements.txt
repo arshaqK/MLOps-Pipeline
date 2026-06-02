@@ -5,3 +5,6 @@ prometheus_client
 python-dotenv
 scikit-learn
 joblib
+fastapi
+uvicorn[standard]
+pydantic
