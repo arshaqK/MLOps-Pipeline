@@ -57,7 +57,7 @@ RETRAIN_COOLDOWN_SEC  = int(os.getenv("RETRAIN_COOLDOWN",      "120"))  # min ga
 VAL_SPLIT             = float(os.getenv("VAL_SPLIT",           "0.2"))
 LABEL_COL             = os.getenv("LABEL_COL",         "label")
 SLACK_WEBHOOK_URL     = os.getenv("SLACK_WEBHOOK_URL", "")
-RETRAIN_METRICS_PORT          = int(os.getenv("RETRAIN_RETRAIN_METRICS_PORT",  "8003"))
+RETRAIN_METRICS_PORT  = int(os.getenv("RETRAIN_METRICS_PORT",  "8003"))
 
 # ---------------------------------------------------------------------------
 # Prometheus metrics
