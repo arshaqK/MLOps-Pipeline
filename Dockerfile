@@ -6,8 +6,7 @@ COPY requirements.txt ./requirements.txt
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-
-COPY serve/app.py ./serve/app.py
+COPY server/app.py ./server/app.py
 
 COPY model/artifacts/ ./model/artifacts/
 
@@ -16,4 +15,4 @@ ENV LABEL_COL=label
 
 EXPOSE 8000
 
-CMD ["uvicorn", "serve.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]

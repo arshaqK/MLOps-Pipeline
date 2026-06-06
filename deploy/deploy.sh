@@ -14,18 +14,22 @@
 
 set -euo pipefail
 
+set -a
+source .env
+set +a
+
 DOCKERHUB_USERNAME="${DOCKERHUB_USERNAME:?DOCKERHUB_USERNAME is required}"
 DOCKERHUB_TOKEN="${DOCKERHUB_TOKEN:?DOCKERHUB_TOKEN is required}"
 EC2_HOST="${EC2_HOST:?EC2_HOST is required}"
 EC2_USER="${EC2_USER:-ubuntu}"
-EC2_SSH_KEY="${EC2_SSH_KEY:-~/.ssh/ec2_key.pem}"
-IMAGE_NAME="${DOCKERHUB_USERNAME}/mlops-inference"
+EC2_SSH_KEY="${EC2_SSH_KEY:-~/.ssh/MLOps.pem}"
+IMAGE_NAME="${DOCKERHUB_USERNAME}/mlops-pipeline"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
-CONTAINER_NAME="mlops-inference"
+CONTAINER_NAME="mlops-pipeline"
 APP_PORT="${APP_PORT:-8000}"
 
 echo "========================================"
-echo " MLOps Inference — Deploy Script"
+echo " MLOps Pipeline — Deploy Script"
 echo " Image : ${IMAGE_NAME}:${IMAGE_TAG}"
 echo " Target: ${EC2_USER}@${EC2_HOST}"
 echo "========================================"
