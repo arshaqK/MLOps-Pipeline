@@ -20,7 +20,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from exporter.metrics import (
+    PREDICT_REQUESTS, PREDICT_ERRORS, RESPONSE_DELAY_SECONDS, MODEL_VERSION as LOADED_MODEL_VER,
+)
 
 load_dotenv()
 
@@ -42,10 +45,7 @@ LABEL_COL  = os.getenv("LABEL_COL", "label")
 # ---------------------------------------------------------------------------
 # Prometheus metrics
 # ---------------------------------------------------------------------------
-PREDICT_REQUESTS  = Counter("predict_requests_total",    "Total /predict calls")
-PREDICT_ERRORS    = Counter("predict_errors_total",      "Total /predict errors")
-PREDICT_LATENCY   = Histogram("predict_latency_seconds", "Prediction latency")
-LOADED_MODEL_VER  = Gauge("loaded_model_version",        "Currently loaded model version")
+# All metrics imported from exporter.metrics
 
 # ---------------------------------------------------------------------------
 # Model state — module-level so it survives across requests
@@ -133,7 +133,7 @@ def predict(request: PredictRequest):
     PREDICT_REQUESTS.inc()
 
     try:
-        with PREDICT_LATENCY.time():
+        with RESPONSE_DELAY_SECONDS.time():
             X = np.array(request.features).reshape(1, -1)
             prediction  = int(_model.predict(X)[0])
             # predict_proba gives confidence for each class; take the winning class prob

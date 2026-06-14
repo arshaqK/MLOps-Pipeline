@@ -8,6 +8,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY server/app.py ./server/app.py
 
+COPY exporter/ ./exporter/
+
 COPY model/artifacts/ ./model/artifacts/
 
 ENV MODEL_DIR=model/artifacts

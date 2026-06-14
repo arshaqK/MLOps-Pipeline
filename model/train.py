@@ -15,8 +15,10 @@ Design decisions:
   • Prometheus Gauge (not Counter) for accuracy because accuracy can go up or
     down; a Counter can only increase.
 """
-
+import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import re
 import glob
 import logging
@@ -27,7 +29,8 @@ from dotenv import load_dotenv
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-from prometheus_client import Gauge, Counter, start_http_server
+from prometheus_client import start_http_server
+from exporter.metrics import MODEL_ACCURACY, MODEL_VERSION, RETRAIN_COUNT
 
 load_dotenv()
 
@@ -49,15 +52,13 @@ MODEL_DIR          = os.getenv("MODEL_DIR", "model/artifacts")
 ACCURACY_THRESHOLD = float(os.getenv("ACCURACY_THRESHOLD", "0.80"))
 MAX_ITERATIONS     = int(os.getenv("MAX_ITERATIONS", "10"))
 VAL_SPLIT          = float(os.getenv("VAL_SPLIT", "0.2"))
-TRAIN_METRICS_PORT = int(os.getenv("TRAIN_METRICS_PORT", "8002"))  # separate port from ingestion
+METRICS_PORT       = int(os.getenv("TRAIN_METRICS_PORT", "8002"))  # separate port from ingestion
 LABEL_COL          = os.getenv("LABEL_COL", "label")
 
 # ---------------------------------------------------------------------------
 # Prometheus metrics
 # ---------------------------------------------------------------------------
-MODEL_ACCURACY     = Gauge("model_accuracy",       "Validation accuracy of the current model")
-MODEL_VERSION      = Gauge("model_version",        "Current model version number")
-RETRAIN_COUNT      = Counter("retrain_count_total","Total number of retraining runs")
+# MODEL_ACCURACY, MODEL_VERSION, RETRAIN_COUNT imported from exporter.metrics
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -121,10 +122,10 @@ def train(start_metrics_server: bool = False) -> tuple[str, float, int]:
     if start_metrics_server:
         # Only start if called as a standalone script; retrain_trigger manages this
         try:
-            start_http_server(TRAIN_METRICS_PORT)
-            log.info("Prometheus metrics server started on port %d", TRAIN_METRICS_PORT)
+            start_http_server(METRICS_PORT)
+            log.info("Prometheus metrics server started on port %d", METRICS_PORT)
         except OSError:
-            log.warning("Metrics port %d already in use — skipping.", TRAIN_METRICS_PORT)
+            log.warning("Metrics port %d already in use — skipping.", METRICS_PORT)
 
     X, y = _load_data()
     RETRAIN_COUNT.inc()

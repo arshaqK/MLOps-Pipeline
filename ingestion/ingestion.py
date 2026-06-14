@@ -5,18 +5,26 @@ Polls the /records endpoint at regular intervals, persists batches locally,
 detects schema changes, delegates drift detection, and triggers retraining.
 """
 
+import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import csv
 import time
 import logging
 import requests
 import pandas as pd
 from datetime import datetime
-from prometheus_client import Counter, start_http_server
+from prometheus_client import start_http_server
+from exporter.metrics import (
+    RECORDS_INGESTED, DATALAKE_UNAVAILABLE, FEATURE_ADDED,
+    FEATURE_REMOVED, DISTRIBUTION_DRIFT_DETECTED, RETRAIN_COUNT,
+)
+
+from dotenv import load_dotenv
 
 from drift_detector import DriftDetector
 
-from dotenv import load_dotenv
 load_dotenv()
 
 # ---------------------------------------------------------------------------
@@ -41,14 +49,11 @@ SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")          # set in env for
 METRICS_PORT      = int(os.getenv("METRICS_PORT", "8001"))      # Prometheus scrape port
 
 # ---------------------------------------------------------------------------
-# Prometheus counters — one per notable event so Grafana can graph each
+# Prometheus counters — imported from central registry (exporter/metrics.py)
 # ---------------------------------------------------------------------------
-FEATURE_ADDED          = Counter("feature_added_total",        "Schema: new feature appeared")
-FEATURE_REMOVED        = Counter("feature_removed_total",      "Schema: existing feature disappeared")
-DRIFT_DETECTED         = Counter("distribution_drift_detected_total", "Drift: stat shift beyond threshold")
-DATALAKE_UNAVAILABLE   = Counter("datalake_unavailable_total", "HTTP 503 responses from data source")
-RECORDS_INGESTED       = Counter("records_ingested_total",     "Total rows successfully ingested")
-RETRAIN_TRIGGERED      = Counter("retrain_triggered_total",    "Times retraining pipeline was invoked")
+# RECORDS_INGESTED, DATALAKE_UNAVAILABLE, FEATURE_ADDED,
+# FEATURE_REMOVED, DISTRIBUTION_DRIFT_DETECTED, RETRAIN_COUNT
+# all imported above
 
 
 # ---------------------------------------------------------------------------
@@ -89,20 +94,16 @@ def _compare_schemas(
 def _persist_batch(records: list[dict], schema: list[str]) -> int:
     """Append records to the local CSV, creating it with a header if needed."""
     os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
-    
-    # Always check if header exists by reading first line, not just file existence
-    has_header = False
-    if os.path.isfile(DATA_FILE):
-        with open(DATA_FILE, "r") as fh:
-            first_line = fh.readline().strip()
-            # Header exists if first line matches schema columns
-            has_header = first_line == ",".join(schema)
+    file_empty = not os.path.exists(DATA_FILE) or os.path.getsize(DATA_FILE) == 0
 
     with open(DATA_FILE, "a", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=schema, extrasaction="ignore")
-        if not has_header:
+        if file_empty:
+            writer = csv.DictWriter(fh, fieldnames=["feature_0", "feature_1", "label"], extrasaction="ignore")
             writer.writeheader()
+        
+        writer = csv.DictWriter(fh, fieldnames=schema, extrasaction="ignore")
         for row in records:
+            # Fill missing keys with empty string so DictWriter never chokes
             writer.writerow({col: row.get(col, "") for col in schema})
 
     return len(records)
@@ -114,7 +115,7 @@ def _persist_batch(records: list[dict], schema: list[str]) -> int:
 def _trigger_retraining(reason: str) -> None:
     """Invoke the retraining pipeline; currently shell-based, easily swappable."""
     log.info("Triggering retraining: %s", reason)
-    RETRAIN_TRIGGERED.inc()
+    RETRAIN_COUNT.inc()
     _send_slack(f":arrows_counterclockwise: Retraining triggered — {reason}")
 
     # Replace the os.system call with an HTTP POST to a training service or
@@ -159,10 +160,8 @@ def run_ingestion_loop() -> None:
                 continue
 
             response.raise_for_status()  # surface any other unexpected HTTP errors
-            
             payload = response.json()
-            # API returns a list of {"features": [...], "label": ...} objects
-            # We flatten each record into {"feature_0": val, "feature_1": val, ..., "label": val}
+
             if isinstance(payload, list):
                 if not payload:
                     time.sleep(POLL_INTERVAL_SEC)
@@ -180,7 +179,6 @@ def run_ingestion_loop() -> None:
             else:
                 current_schema = payload["schema"]
                 records = payload["records"]
-
 
             # ------------------------------------------------------------------
             # 3. Schema change detection
@@ -222,7 +220,7 @@ def run_ingestion_loop() -> None:
 
                 if drifted_features:
                     log.warning("Drift detected in features: %s", drifted_features)
-                    DRIFT_DETECTED.inc()
+                    DISTRIBUTION_DRIFT_DETECTED.set(1)
                     _send_slack(
                         f":chart_with_downwards_trend: Distribution drift detected in: "
                         f"`{'`, `'.join(drifted_features)}`"

@@ -19,7 +19,10 @@ Design decisions:
     when drift is persistent.
 """
 
+import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import glob
 import time
 import logging
@@ -30,7 +33,8 @@ import pandas as pd
 from dotenv import load_dotenv
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
-from prometheus_client import Counter, Gauge, start_http_server
+from prometheus_client import start_http_server
+from exporter.metrics import RETRAIN_COUNT, MODEL_ACCURACY
 
 import train as trainer  # reuse training logic from train.py
 
@@ -57,13 +61,12 @@ RETRAIN_COOLDOWN_SEC  = int(os.getenv("RETRAIN_COOLDOWN",      "120"))  # min ga
 VAL_SPLIT             = float(os.getenv("VAL_SPLIT",           "0.2"))
 LABEL_COL             = os.getenv("LABEL_COL",         "label")
 SLACK_WEBHOOK_URL     = os.getenv("SLACK_WEBHOOK_URL", "")
-RETRAIN_METRICS_PORT  = int(os.getenv("RETRAIN_METRICS_PORT",  "8003"))
+METRICS_PORT          = int(os.getenv("RETRAIN_METRICS_PORT",  "8003"))
 
 # ---------------------------------------------------------------------------
 # Prometheus metrics
 # ---------------------------------------------------------------------------
-RETRAIN_TRIGGERED  = Counter("retrain_triggered_total",  "Times retraining was triggered")
-CURRENT_ACCURACY   = Gauge("current_model_accuracy",     "Live accuracy of deployed model")
+# RETRAIN_COUNT, MODEL_ACCURACY imported from exporter.metrics
 
 # ---------------------------------------------------------------------------
 # Slack helper
@@ -137,7 +140,7 @@ def _evaluate_current_model() -> float | None:
     accuracy = accuracy_score(y_val, preds)
 
     log.info("Current model v%d accuracy on latest data: %.4f", version, accuracy)
-    CURRENT_ACCURACY.set(accuracy)
+    MODEL_ACCURACY.set(accuracy)
     return accuracy
 
 
@@ -192,7 +195,7 @@ def maybe_retrain(
     # ------------------------------------------------------------------
     reason_str = "; ".join(reasons)
     log.info("Retraining triggered: %s", reason_str)
-    RETRAIN_TRIGGERED.inc()
+    RETRAIN_COUNT.inc()
 
     try:
         model_path, new_accuracy, version = trainer.train(start_metrics_server=False)
@@ -227,10 +230,10 @@ def run_watch_loop() -> None:
     In standalone mode, only accuracy degradation is checked.
     """
     try:
-        start_http_server(RETRAIN_METRICS_PORT)
-        log.info("Retrain metrics server on port %d", RETRAIN_METRICS_PORT)
+        start_http_server(METRICS_PORT)
+        log.info("Retrain metrics server on port %d", METRICS_PORT)
     except OSError:
-        log.warning("Port %d already in use.", RETRAIN_METRICS_PORT)
+        log.warning("Port %d already in use.", METRICS_PORT)
 
     log.info("Retrain watch loop started (eval every %ds)", EVAL_INTERVAL_SEC)
     last_retrain_time = 0.0
