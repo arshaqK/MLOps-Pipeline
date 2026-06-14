@@ -29,7 +29,6 @@ from dotenv import load_dotenv
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-from prometheus_client import start_http_server
 from exporter.metrics import MODEL_ACCURACY, MODEL_VERSION, RETRAIN_COUNT
 
 load_dotenv()
@@ -108,7 +107,7 @@ def _load_data() -> tuple[np.ndarray, np.ndarray]:
 # Core training function
 # ---------------------------------------------------------------------------
 
-def train(start_metrics_server: bool = False) -> tuple[str, float, int]:
+def train() -> tuple[str, float, int]:
     """
     Train a classifier, iterating until accuracy >= ACCURACY_THRESHOLD or
     MAX_ITERATIONS is exhausted.
@@ -119,14 +118,6 @@ def train(start_metrics_server: bool = False) -> tuple[str, float, int]:
     accuracy   : float — validation accuracy of the saved model
     version    : int   — version number assigned to this model
     """
-    if start_metrics_server:
-        # Only start if called as a standalone script; retrain_trigger manages this
-        try:
-            start_http_server(METRICS_PORT)
-            log.info("Prometheus metrics server started on port %d", METRICS_PORT)
-        except OSError:
-            log.warning("Metrics port %d already in use — skipping.", METRICS_PORT)
-
     X, y = _load_data()
     RETRAIN_COUNT.inc()
 
@@ -190,6 +181,6 @@ def train(start_metrics_server: bool = False) -> tuple[str, float, int]:
 # Entry point — allows running train.py directly
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    model_path, accuracy, version = train(start_metrics_server=True)
+    model_path, accuracy, version = train()
     print(f"\nDone. Model v{version} saved to: {model_path}")
     print(f"Validation accuracy: {accuracy:.4f}")

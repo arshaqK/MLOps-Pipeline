@@ -3,7 +3,7 @@ pandas
 numpy
 prometheus_client
 python-dotenv
-scikit-learn
+scikit-learn==1.7.2
 joblib
 fastapi
 uvicorn[standard]

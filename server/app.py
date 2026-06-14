@@ -7,13 +7,17 @@ Design decisions:
   • /metrics endpoint delegates to prometheus_client so Prometheus can scrape it.
   • Model is reloaded automatically if a newer version file appears on disk,
     enabling zero-downtime model updates without restarting the container.
+  • ingestion and retrain loops run as background threads so all metrics share
+    the same Prometheus registry and are exposed at /metrics.
 """
 
 import os
 import re
+import sys
 import glob
 import logging
 import joblib
+import threading
 import numpy as np
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
@@ -21,8 +25,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+
+# Ensure project root is on path so ingestion/model modules are importable
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from exporter.metrics import (
-    PREDICT_REQUESTS, PREDICT_ERRORS, RESPONSE_DELAY_SECONDS, MODEL_VERSION as LOADED_MODEL_VER,
+    PREDICT_REQUESTS, PREDICT_ERRORS, RESPONSE_DELAY_SECONDS, MODEL_VERSION,
+    MODEL_ACCURACY, RETRAIN_COUNT, RECORDS_INGESTED, DATALAKE_UNAVAILABLE,
+    FEATURE_ADDED, FEATURE_REMOVED, DISTRIBUTION_DRIFT_DETECTED,
 )
 
 load_dotenv()
@@ -39,13 +49,8 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-MODEL_DIR  = os.getenv("MODEL_DIR", "model/artifacts")
-LABEL_COL  = os.getenv("LABEL_COL", "label")
-
-# ---------------------------------------------------------------------------
-# Prometheus metrics
-# ---------------------------------------------------------------------------
-# All metrics imported from exporter.metrics
+MODEL_DIR = os.getenv("MODEL_DIR", "model/artifacts")
+LABEL_COL = os.getenv("LABEL_COL", "label")
 
 # ---------------------------------------------------------------------------
 # Model state — module-level so it survives across requests
@@ -54,7 +59,7 @@ _model         = None
 _model_version = 0
 
 
-def _get_latest_model_path() -> tuple[str, int] | tuple[None, None]:
+def _get_latest_model_path():
     """Find the highest-versioned model .pkl in MODEL_DIR."""
     files = glob.glob(os.path.join(MODEL_DIR, "model_v*.pkl"))
     if not files:
@@ -78,16 +83,51 @@ def _load_model() -> None:
     if version != _model_version:
         _model = joblib.load(path)
         _model_version = version
-        LOADED_MODEL_VER.set(version)
+        MODEL_VERSION.set(version)
         log.info("Loaded model v%d from %s", version, path)
 
 
 # ---------------------------------------------------------------------------
-# Lifespan — load model on startup
+# Background thread runners
+# ---------------------------------------------------------------------------
+
+def _run_ingestion():
+    """Run ingestion loop in a background thread."""
+    try:
+        from ingestion.ingestion import run_ingestion_loop
+        log.info("Starting ingestion loop in background thread...")
+        run_ingestion_loop()
+    except Exception as exc:
+        log.error("Ingestion thread crashed: %s", exc)
+
+
+def _run_retrain_watcher():
+    """Run retrain watcher in a background thread."""
+    try:
+        from model.retrain_trigger import run_watch_loop
+        log.info("Starting retrain watcher in background thread...")
+        run_watch_loop()
+    except Exception as exc:
+        log.error("Retrain watcher thread crashed: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Lifespan — load model and start background threads on startup
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Load the latest model
     _load_model()
+
+    # Start ingestion as a daemon thread — dies when main process dies
+    ingestion_thread = threading.Thread(target=_run_ingestion, daemon=True)
+    ingestion_thread.start()
+
+    # Start retrain watcher as a daemon thread
+    retrain_thread = threading.Thread(target=_run_retrain_watcher, daemon=True)
+    retrain_thread.start()
+
+    log.info("Background threads started: ingestion + retrain watcher")
     yield
 
 
@@ -98,7 +138,7 @@ app = FastAPI(title="MLOps Inference Service", lifespan=lifespan)
 # Request / response schemas
 # ---------------------------------------------------------------------------
 class PredictRequest(BaseModel):
-    features: list[float]  # ordered list of feature values, e.g. [0.5, -1.2]
+    features: list[float]
 
 
 class PredictResponse(BaseModel):
@@ -123,7 +163,6 @@ def predict(request: PredictRequest):
     Accept a feature vector, return predicted class and confidence.
     Reloads model from disk if a newer version is available.
     """
-    # Reload model if a newer version has been saved since last request
     _load_model()
 
     if _model is None:
@@ -135,10 +174,9 @@ def predict(request: PredictRequest):
     try:
         with RESPONSE_DELAY_SECONDS.time():
             X = np.array(request.features).reshape(1, -1)
-            prediction  = int(_model.predict(X)[0])
-            # predict_proba gives confidence for each class; take the winning class prob
-            proba       = _model.predict_proba(X)[0]
-            confidence  = float(np.max(proba))
+            prediction = int(_model.predict(X)[0])
+            proba      = _model.predict_proba(X)[0]
+            confidence = float(np.max(proba))
 
         log.info("Prediction: %d (confidence=%.4f, model_v%d)", prediction, confidence, _model_version)
         return PredictResponse(
@@ -155,5 +193,5 @@ def predict(request: PredictRequest):
 
 @app.get("/metrics")
 def metrics():
-    """Prometheus-compatible metrics endpoint."""
+    """Prometheus-compatible metrics endpoint — all metrics from all threads."""
     return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)

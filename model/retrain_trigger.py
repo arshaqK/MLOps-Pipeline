@@ -19,10 +19,7 @@ Design decisions:
     when drift is persistent.
 """
 
-import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import glob
 import time
 import logging
@@ -33,10 +30,9 @@ import pandas as pd
 from dotenv import load_dotenv
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
-from prometheus_client import start_http_server
 from exporter.metrics import RETRAIN_COUNT, MODEL_ACCURACY
 
-import train as trainer  # reuse training logic from train.py
+from model import train as trainer  # reuse training logic from train.py
 
 load_dotenv()
 
@@ -198,7 +194,7 @@ def maybe_retrain(
     RETRAIN_COUNT.inc()
 
     try:
-        model_path, new_accuracy, version = trainer.train(start_metrics_server=False)
+        model_path, new_accuracy, version = trainer.train()
 
         # Notify Slack with reason + new accuracy
         _send_slack(
@@ -229,12 +225,6 @@ def run_watch_loop() -> None:
     (e.g. via a shared Redis flag or a lightweight HTTP call).
     In standalone mode, only accuracy degradation is checked.
     """
-    try:
-        start_http_server(METRICS_PORT)
-        log.info("Retrain metrics server on port %d", METRICS_PORT)
-    except OSError:
-        log.warning("Port %d already in use.", METRICS_PORT)
-
     log.info("Retrain watch loop started (eval every %ds)", EVAL_INTERVAL_SEC)
     last_retrain_time = 0.0
 

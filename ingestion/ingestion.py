@@ -5,10 +5,7 @@ Polls the /records endpoint at regular intervals, persists batches locally,
 detects schema changes, delegates drift detection, and triggers retraining.
 """
 
-import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import csv
 import time
 import logging
@@ -21,11 +18,7 @@ from exporter.metrics import (
     FEATURE_REMOVED, DISTRIBUTION_DRIFT_DETECTED, RETRAIN_COUNT,
 )
 
-from dotenv import load_dotenv
-
-from drift_detector import DriftDetector
-
-load_dotenv()
+from ingestion.drift_detector import DriftDetector
 
 # ---------------------------------------------------------------------------
 # Logging — structured, timestamped output so every event is traceable
@@ -94,14 +87,12 @@ def _compare_schemas(
 def _persist_batch(records: list[dict], schema: list[str]) -> int:
     """Append records to the local CSV, creating it with a header if needed."""
     os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
-    file_empty = not os.path.exists(DATA_FILE) or os.path.getsize(DATA_FILE) == 0
+    file_exists = os.path.isfile(DATA_FILE)
 
     with open(DATA_FILE, "a", newline="") as fh:
-        if file_empty:
-            writer = csv.DictWriter(fh, fieldnames=["feature_0", "feature_1", "label"], extrasaction="ignore")
-            writer.writeheader()
-        
         writer = csv.DictWriter(fh, fieldnames=schema, extrasaction="ignore")
+        if not file_exists:
+            writer.writeheader()   # write column names once on creation
         for row in records:
             # Fill missing keys with empty string so DictWriter never chokes
             writer.writerow({col: row.get(col, "") for col in schema})
@@ -133,8 +124,8 @@ def run_ingestion_loop() -> None:
     Continuously polls the data endpoint, persists records, monitors schema
     and drift, fires alerts, and triggers retraining when warranted.
     """
-    start_http_server(METRICS_PORT)  # expose /metrics for Prometheus scraping
-    log.info("Prometheus metrics server started on port %d", METRICS_PORT)
+    # metrics exposed via app.py /metrics endpoint
+    # no separate metrics server needed
 
     previous_schema: list[str] | None = None  # no baseline on first iteration
     rows_since_last_retrain: int = 0
@@ -166,11 +157,9 @@ def run_ingestion_loop() -> None:
                 if not payload:
                     time.sleep(POLL_INTERVAL_SEC)
                     continue
-
                 n_features = len(payload[0]["features"])
                 feature_cols = [f"feature_{i}" for i in range(n_features)]
                 current_schema = feature_cols + ["label"]
-
                 records = []
                 for row in payload:
                     flat = {f"feature_{i}": v for i, v in enumerate(row["features"])}
@@ -227,7 +216,10 @@ def run_ingestion_loop() -> None:
                     )
                     # Drift in the live distribution also warrants a retrain
                     _trigger_retraining(f"drift in {drifted_features}")
+                    DISTRIBUTION_DRIFT_DETECTED.set(0)  # reset after retraining completes
                     rows_since_last_retrain = 0
+                else:
+                    DISTRIBUTION_DRIFT_DETECTED.set(0)  # no drift in this batch
 
             # ------------------------------------------------------------------
             # 6. Volume-based retraining — retrain once enough new data arrives

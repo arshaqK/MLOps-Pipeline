@@ -87,6 +87,12 @@ docker run -d \
     -p "${APP_PORT}:8000" \
     -e MODEL_DIR=model/artifacts \
     -e LABEL_COL=label \
+    -e SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL}" \
+    -e POLL_INTERVAL="${POLL_INTERVAL}" \
+    -e DRIFT_THRESHOLD="${DRIFT_THRESHOLD}" \
+    -e RETRAIN_ROW_COUNT="${RETRAIN_ROW_COUNT}" \
+    -e ACCURACY_THRESHOLD="${ACCURACY_THRESHOLD}" \
+    -v /home/ubuntu/data:/app/data \
     "${IMAGE_NAME}:${IMAGE_TAG}"
 
 echo "  -> Container started."

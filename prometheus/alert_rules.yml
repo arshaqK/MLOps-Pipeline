@@ -1,0 +1,63 @@
+groups:
+  - name: mlops_alerts
+    rules:
+
+      # Alert when model accuracy drops below 0.80
+      - alert: ModelAccuracyLow
+        expr: model_accuracy < 0.80
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Model accuracy below threshold"
+          description: "Model accuracy is {{ $value | printf \"%.2f\" }}, which is below the 0.80 threshold."
+
+      # Alert when data source returns 503
+      - alert: DatalakeUnavailable
+        expr: increase(datalake_unavailable_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Data source returning 503 errors"
+          description: "The /records endpoint has returned {{ $value }} 503 errors in the last 5 minutes."
+
+      # Alert when distribution drift is detected
+      - alert: DistributionDriftDetected
+        expr: distribution_drift_detected == 1
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Distribution drift detected"
+          description: "Feature distribution drift has been detected in the incoming data."
+
+      # Alert when prediction latency p95 exceeds 1 second
+      - alert: HighPredictionLatency
+        expr: histogram_quantile(0.95, rate(response_delay_seconds_bucket[5m])) > 1.0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High prediction latency"
+          description: "95th percentile prediction latency is {{ $value | printf \"%.2f\" }}s, exceeding 1s threshold."
+
+      # Alert when a feature is added to schema
+      - alert: FeatureAdded
+        expr: increase(feature_added_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: "New feature added to schema"
+          description: "A new feature has appeared in the data schema."
+
+      # Alert when a feature is removed from schema
+      - alert: FeatureRemoved
+        expr: increase(feature_removed_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Feature removed from schema"
+          description: "A feature has been removed from the data schema."
