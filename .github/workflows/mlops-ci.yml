@@ -60,7 +60,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -89,7 +89,7 @@ jobs:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
@@ -98,7 +98,7 @@ jobs:
           chmod 600 /tmp/ec2_key.pem
 
           ssh -o StrictHostKeyChecking=no -i /tmp/ec2_key.pem ${EC2_USER}@${EC2_HOST} << REMOTE
-            echo "${DOCKER_PASSWORD}" | docker login --username "${DOCKER_USERNAME}" --password-stdin
+            echo "${DOCKERHUB_TOKEN}" | docker login --username "${DOCKER_USERNAME}" --password-stdin
 
             docker pull ${DOCKER_USERNAME}/mlops-inference:${IMAGE_TAG}
 

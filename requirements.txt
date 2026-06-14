@@ -8,3 +8,6 @@ joblib
 fastapi
 uvicorn[standard]
 pydantic
+flake8
+pytest
+httpx   
