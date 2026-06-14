@@ -2,62 +2,72 @@ groups:
   - name: mlops_alerts
     rules:
 
-      # Alert when model accuracy drops below 0.80
-      - alert: ModelAccuracyLow
-        expr: model_accuracy < 0.80
-        for: 1m
+      # 1 — Data source returning 503 errors
+      - alert: DataLakeUnavailable
+        expr: increase(datalake_unavailable_total[1m]) > 0
+        for: 0m
         labels:
           severity: critical
         annotations:
-          summary: "Model accuracy below threshold"
-          description: "Model accuracy is {{ $value | printf \"%.2f\" }}, which is below the 0.80 threshold."
+          summary: "Data source returned 503"
+          description: "Data source returned 503. Check API availability."
 
-      # Alert when data source returns 503
-      - alert: DatalakeUnavailable
-        expr: increase(datalake_unavailable_total[5m]) > 0
+      # 2 — New feature appeared in schema
+      - alert: FeatureAdded
+        expr: increase(feature_added_total[1m]) > 0
         for: 0m
         labels:
           severity: warning
         annotations:
-          summary: "Data source returning 503 errors"
-          description: "The /records endpoint has returned {{ $value }} 503 errors in the last 5 minutes."
+          summary: "New feature detected in schema"
+          description: "New feature detected in schema. Retraining may be required."
 
-      # Alert when distribution drift is detected
-      - alert: DistributionDriftDetected
+      # 3 — Feature removed from schema
+      - alert: FeatureRemoved
+        expr: increase(feature_removed_total[1m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Feature dropped from schema"
+          description: "Feature dropped from schema. Verify pipeline compatibility."
+
+      # 4 — Distribution drift detected (exact match)
+      - alert: DistributionDrift
         expr: distribution_drift_detected == 1
         for: 0m
         labels:
           severity: warning
         annotations:
           summary: "Distribution drift detected"
-          description: "Feature distribution drift has been detected in the incoming data."
+          description: "Data distribution drift detected. Model may be stale."
 
-      # Alert when prediction latency p95 exceeds 1 second
-      - alert: HighPredictionLatency
+      # 5 — Feature level drift (any drift > 0)
+      - alert: FeatureDriftDetected
+        expr: distribution_drift_detected > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Feature-level drift flagged"
+          description: "Feature-level drift flagged. Investigate upstream data."
+
+      # 6 — High prediction latency p95 > 1 second
+      - alert: HighResponseLatency
         expr: histogram_quantile(0.95, rate(response_delay_seconds_bucket[5m])) > 1.0
         for: 2m
         labels:
           severity: warning
         annotations:
           summary: "High prediction latency"
-          description: "95th percentile prediction latency is {{ $value | printf \"%.2f\" }}s, exceeding 1s threshold."
+          description: "P95 response latency exceeded 1 second."
 
-      # Alert when a feature is added to schema
-      - alert: FeatureAdded
-        expr: increase(feature_added_total[5m]) > 0
-        for: 0m
+      # 7 — Model accuracy dropped below threshold
+      - alert: LowModelAccuracy
+        expr: model_accuracy < 0.8
+        for: 1m
         labels:
-          severity: info
+          severity: critical
         annotations:
-          summary: "New feature added to schema"
-          description: "A new feature has appeared in the data schema."
-
-      # Alert when a feature is removed from schema
-      - alert: FeatureRemoved
-        expr: increase(feature_removed_total[5m]) > 0
-        for: 0m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Feature removed from schema"
-          description: "A feature has been removed from the data schema."
+          summary: "Model accuracy below threshold"
+          description: "Model accuracy dropped below threshold. Auto-retraining triggered."

@@ -30,10 +30,11 @@ services:
       - prometheus
 
   alertmanager:
-    image: prom/alertmanager:latest
+    image: prom/alertmanager:v0.27.0
     container_name: alertmanager
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - ./alertmanager/slack_webhook.txt:/etc/alertmanager/slack_webhook.txt
     ports:
       - "9093:9093"
     restart: unless-stopped
